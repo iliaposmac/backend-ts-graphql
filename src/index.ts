@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { Connection, IDatabaseDriver, Logger, MikroORM } from '@mikro-orm/core';
-import { __prod__ } from './constants';
+import { FRONT_URL, __prod__ } from './constants';
 import mikroORMinit from './mikro-orm.config';
 import express from 'express';
 import { ApolloServer } from 'apollo-server-express';
@@ -11,10 +11,11 @@ import redis from 'redis';
 import connectRedis from 'connect-redis';
 import session from 'express-session';
 import { SessionOptions } from 'express-session';
+import cors from 'cors';
 
 const main  = async(): Promise<void> => {
     const logger = new Logger((message) => console.log(message), true);
-    logger.log( "discovery" ,"Defining mikro orm")
+    logger.log("discovery" ,"Defining mikro orm")
 
     const orm: MikroORM<IDatabaseDriver<Connection>> = await MikroORM.init(mikroORMinit);
     await orm.getMigrator().up()
@@ -39,6 +40,12 @@ const main  = async(): Promise<void> => {
     }
 
     const app = express();
+
+    app.use(cors({
+        origin: FRONT_URL,
+        credentials: true
+    }));
+
     app.use(session(sessionOptions))
 
     const apolloServer = new ApolloServer({
@@ -49,7 +56,10 @@ const main  = async(): Promise<void> => {
         context: ({req, res}) => ({em: orm.em, req, res})
     })
 
-    apolloServer.applyMiddleware({ app: app });
+    apolloServer.applyMiddleware({ 
+        app: app,
+        cors: false
+    });
     
     app.get('/', (_, res)=>{
         res.send('HELL 2.25 h timestamp');

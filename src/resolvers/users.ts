@@ -2,6 +2,7 @@ import { User } from "../etities/User";
 import { MyContext } from "src/types";
 import argon from "argon2";
 import { Arg, Ctx, Field, InputType, Mutation, ObjectType, Query, Resolver } from "type-graphql";
+import { EntityManager } from "@mikro-orm/postgresql";
 
 
 @InputType()
@@ -24,20 +25,26 @@ class ErrorField{
 
 @ObjectType()
 class UserRespone {
-    @Field(()=>ErrorField, {nullable: true})
-    error?: ErrorField;
+    @Field(()=>[ErrorField], {nullable: true})
+    errors?: ErrorField[];
 
     @Field(()=>User, {nullable: true})
     user?: User
 }
 
+interface newUser  {
+    username: string,
+    password: string,
+    created_at: Date
+}
+
 @Resolver()
 export class UserResolver {
+
     @Query(()=>User, {nullable: true})
     async me( @Ctx() ctx: MyContext ) {
-        console.log(ctx.req.session)
         const userId = ctx.req.session.userId;
-        const user = await ctx.em.findOne(User, {id: userId});
+        const user = await ctx.em.findOne(User, {id: userId}); 
         if(!user){
             return null;
         }
@@ -49,63 +56,80 @@ export class UserResolver {
         @Arg("options", ()=>UsernameAndPassInput) options: UsernameAndPassInput,
         @Ctx() ctx: MyContext
     ): Promise<UserRespone> {
+       try {
         const isUserExists = await ctx.em.findOne(User, {username: options.username});
-
+        
         if(isUserExists){
             return {
-                error: {
-                    field:"User",
+                errors: [{
+                    field:"username",
                     message: "User already exists"
-                }
+                }]
             }
         }
 
         if(options.username.length <=2 ){
             return {
-                error: {
+                errors:[{
                     field: "username",
                     message: "Username is too short > 2 s"
-                }
+                }] 
             }
         }
 
         if(options.password.length <=5 ){
             return {
-                error: {
+                errors: [{
                     field: "password",
                     message: "Psw is too short > 6 s"
-                }
+                }]  
             }
         }
-        const hashedPassword = await argon.hash(options.password)
-        const user = ctx.em.create(User, {username: options.username, password: hashedPassword})
-        await ctx.em.persistAndFlush(user)
-        return { user }       
-    }
 
+        const hashedPassword = await argon.hash(options.password)
+        const userObj: newUser = {
+            created_at: new Date(),
+            password: hashedPassword,
+            username: options.username
+        }
+
+        // const user = ctx.em.create(User, {username: options.username, password: hashedPassword});
+        const newUser = await (ctx.em as EntityManager).createQueryBuilder(User).getKnexQuery().insert(userObj).returning("*");
+        
+        return { user: newUser[0] }
+
+       } catch (error) {
+        return {
+            errors: [{
+                field: error.code,
+                message: error.message
+            }]  
+        }      
+    }
+}
     @Mutation(()=> UserRespone)
     async login(
-        @Arg("oprions", ()=>UsernameAndPassInput) options: UsernameAndPassInput,
+        @Arg("options", ()=> UsernameAndPassInput) options: UsernameAndPassInput,
         @Ctx() ctx: MyContext
     ): Promise<UserRespone>{
         const userFind = await ctx.em.findOne(User, {username: options.username});
-        
+
         if(!userFind){
             return {
-                error: {
+                errors: [{
                     field: 'username',
-                    message: "username doesnt exists"
-                }
+                    message: "Username doesn't exists"
+                }]
             }
         }
 
         const valid = await argon.verify(userFind.password, options.password);
         if(!valid){
             return {
-                error: {
+                errors:[ {
                     field: 'password',
-                    message: "password is incorrect4"
-                }
+                    message: "Password is incorrect"
+                }]
             }
         }
 
@@ -115,4 +139,4 @@ export class UserResolver {
             user: userFind
         };
     }
-} 
+}

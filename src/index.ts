@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { Connection, IDatabaseDriver, Logger, MikroORM } from '@mikro-orm/core';
-import { FRONT_URL, __prod__ } from './constants';
+import { COOKIE_NAME, FRONT_URL, __prod__ } from './constants';
 import mikroORMinit from './mikro-orm.config';
 import express from 'express';
 import { ApolloServer } from 'apollo-server-express';
@@ -33,7 +33,7 @@ const main  = async(): Promise<void> => {
     const sessionOptions : SessionOptions =  {
         secret: "asdsadasasdaasdasdddsa",
         store: new RedisStore({client: redisClient, disableTouch: true,  host:"localhost", port:6379, ttl: 86400}),
-        name: "qid",
+        name: COOKIE_NAME,
         resave: false,
         cookie: cookieOptions,
         saveUninitialized: false,

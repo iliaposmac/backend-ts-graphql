@@ -2,6 +2,7 @@ import { Post } from "../etities/Post";
 import { MyContext } from "src/types";
 import { Arg, Ctx, Int, Mutation, Query, Resolver } from "type-graphql";
 
+
 @Resolver()
 export class PostResolver {
     @Query(()=> [Post] )

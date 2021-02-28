@@ -17,6 +17,10 @@ export class User {
    username: string
 
    @Field(()=>String)
+   @Property({nullable: false, unique: true, type: "text"})
+   email: string
+
+   @Field(()=>String)
    @Property({nullable: false, type: "text"})
    password: string
 }

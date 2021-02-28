@@ -1,19 +1,16 @@
 import { User } from "../etities/User";
 import { MyContext } from "src/types";
 import argon from "argon2";
-import { Arg, Ctx, Field, InputType, Mutation, ObjectType, Query, Resolver } from "type-graphql";
+import { Arg, Ctx, Field, Mutation, ObjectType, Query, Resolver } from "type-graphql";
 import { EntityManager } from "@mikro-orm/postgresql";
-import { COOKIE_NAME } from "../constants";
+import { COOKIE_NAME, FORGET_PASS_PREFIX } from "../constants";
+import { UsernameAndPassInput } from "./UsernameAndPassInput";
+import { validateRegister } from "../services/validation";
+import { nodemailerService } from "../services/nodemailer";
+import createHtmlForEmail from "../services/createHtmlForEmail";
+import { v4 } from 'uuid';
 
 
-@InputType()
-class UsernameAndPassInput {
-    @Field(()=>String)
-    username!: string
-
-    @Field(()=>String)
-    password!:string
-}
 
 @ObjectType()
 class ErrorField{
@@ -36,7 +33,8 @@ class UserRespone {
 interface newUser  {
     username: string,
     password: string,
-    created_at: Date
+    created_at: Date,
+    email: string
 }
 
 @Resolver()
@@ -58,43 +56,26 @@ export class UserResolver {
         @Ctx() ctx: MyContext
     ): Promise<UserRespone> {
        try {
-        const isUserExists = await ctx.em.findOne(User, {username: options.username});
-        
-        if(isUserExists){
-            return {
-                errors: [{
-                    field:"username",
-                    message: "User already exists"
-                }]
-            }
-        }
+        const userByUsername = await ctx.em.findOne(User, {username: options.username});
+        const userByEmail = await ctx.em.findOne(User, {email: options.email});
 
-        if(options.username.length <=2 ){
-            return {
-                errors:[{
-                    field: "username",
-                    message: "Username is too short > 2 s"
-                }] 
-            }
-        }
+        const errors = validateRegister(options, userByEmail, userByUsername);
 
-        if(options.password.length <=5 ){
-            return {
-                errors: [{
-                    field: "password",
-                    message: "Psw is too short > 6 s"
-                }]  
-            }
+        if(errors){
+            console.log("Errors %s", errors);
+            return { errors: errors }
         }
 
         const hashedPassword = await argon.hash(options.password)
         const userObj: newUser = {
             created_at: new Date(),
+            email: options.email,
             password: hashedPassword,
             username: options.username
         }
 
-        // const user = ctx.em.create(User, {username: options.username, password: hashedPassword});
+        console.log('registered %s', userObj);
+
         const newUser = await (ctx.em as EntityManager).createQueryBuilder(User).getKnexQuery().insert(userObj).returning("*");
         
         return { user: newUser[0] }
@@ -111,21 +92,22 @@ export class UserResolver {
 
     @Mutation(()=> UserRespone)
     async login(
-        @Arg("options", ()=> UsernameAndPassInput) options: UsernameAndPassInput,
+        @Arg("usernameOrEmail") usernameOrEmail: string,
+        @Arg("password") password: string,
         @Ctx() ctx: MyContext
     ): Promise<UserRespone>{
-        const userFind = await ctx.em.findOne(User, {username: options.username});
+        const userFind = await ctx.em.findOne(User, usernameOrEmail.includes("@") ? {email: usernameOrEmail} : {username: usernameOrEmail} );
 
         if(!userFind){
             return {
                 errors: [{
-                    field: 'username',
+                    field: 'usernameOrEmail',
                     message: "Username doesn't exists"
                 }]
             }
         }
 
-        const valid = await argon.verify(userFind.password, options.password);
+        const valid = await argon.verify(userFind.password, password);
         if(!valid){
             return {
                 errors:[ {
@@ -144,7 +126,7 @@ export class UserResolver {
 
     @Mutation(()=>Boolean)
     logout (
-        @Ctx() ctx:MyContext
+        @Ctx() ctx: MyContext
     ) {
         return new Promise((resolve)=>{
             ctx.req.session.destroy((err)=>{
@@ -154,5 +136,26 @@ export class UserResolver {
                 resolve(true);
             });
         })
+    }
+    
+    @Mutation(()=>Boolean)
+    async forgotPassword(
+        @Arg("email") email: string,
+        @Ctx() ctx: MyContext
+    ): Promise<Boolean> {
+        const user = await ctx.em.findOne(User, {email})
+
+        if(!user){
+            return true
+        }
+
+        const token = v4();
+
+        await ctx.redis.set(FORGET_PASS_PREFIX + token, user.id, "ex", 1000*60*5); // 5 minutes to restore pass
+
+        const html =  createHtmlForEmail.htmlForgotPassword(token);
+
+        await nodemailerService({receiver: email, html }); 
+        return true
     }
 }

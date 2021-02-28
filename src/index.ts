@@ -7,7 +7,7 @@ import { ApolloServer } from 'apollo-server-express';
 import { buildSchema } from 'type-graphql';
 import { PostResolver } from './resolvers/Post';
 import { UserResolver } from './resolvers/users';
-import redis from 'redis';
+import Redis from 'ioredis';
 import connectRedis from 'connect-redis';
 import session from 'express-session';
 import { SessionOptions } from 'express-session';
@@ -17,11 +17,12 @@ const main  = async(): Promise<void> => {
     const logger = new Logger((message) => console.log(message), true);
     logger.log("discovery" ,"Defining mikro orm")
 
+
     const orm: MikroORM<IDatabaseDriver<Connection>> = await MikroORM.init(mikroORMinit);
     await orm.getMigrator().up()
 
     const RedisStore = connectRedis(session);
-    const redisClient = redis.createClient();
+    const redis = new Redis();
 
     const cookieOptions: session.CookieOptions = {
         httpOnly: true,
@@ -32,7 +33,7 @@ const main  = async(): Promise<void> => {
 
     const sessionOptions : SessionOptions =  {
         secret: "asdsadasasdaasdasdddsa",
-        store: new RedisStore({client: redisClient, disableTouch: true,  host:"localhost", port:6379, ttl: 86400}),
+        store: new RedisStore({client: redis, disableTouch: true,  host:"localhost", port:6379, ttl: 86400}),
         name: COOKIE_NAME,
         resave: false,
         cookie: cookieOptions,
@@ -53,7 +54,7 @@ const main  = async(): Promise<void> => {
             resolvers: [PostResolver, UserResolver], 
             validate: false
         }),
-        context: ({req, res}) => ({em: orm.em, req, res})
+        context: ({req, res}) => ({em: orm.em, req, res, redis})
     })
 
     apolloServer.applyMiddleware({ 

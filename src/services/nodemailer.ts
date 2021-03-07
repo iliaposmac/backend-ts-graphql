@@ -8,18 +8,17 @@ interface EmailInterface {
 export async function nodemailerService(options: EmailInterface) {
 
   let testAccount = await nodemailer.createTestAccount();
-  console.log(testAccount);
 
   let transporter = nodemailer.createTransport({
       host: "smtp.ethereal.email",
       port: 587,
       secure: false, // true for 465, false for other ports
       auth: {
-        user: "nx4plp6vwbokxvcm@ethereal.email", // generated ethereal user
-        pass: "vRt2cYqqpyBsjhHbed", // generated ethereal password
+        user: testAccount.user, // generated ethereal user
+        pass: testAccount.pass, // generated ethereal password
       }
   });
-
+  console.log(options.receiver);
   // send mail with defined transport object
   let info = await transporter.sendMail({
     from: '"Fred Foo 👻" <foo@example.com>', // sender address
@@ -29,6 +28,6 @@ export async function nodemailerService(options: EmailInterface) {
   });
 
   console.log("Message sent: %s", info.messageId);
-
+  console.log("Receiver: %s", info.to);
   console.log("Preview URL: %s", nodemailer.getTestMessageUrl(info));
 }

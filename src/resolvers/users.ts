@@ -22,7 +22,7 @@ class ErrorField{
 }
 
 @ObjectType()
-class UserRespone {
+class UserResponse {
     @Field(()=>[ErrorField], {nullable: true})
     errors?: ErrorField[];
 
@@ -40,6 +40,50 @@ interface newUser  {
 @Resolver()
 export class UserResolver {
 
+    @Mutation(()=> UserResponse)
+    async changePassword(
+        @Ctx() ctx: MyContext,
+        @Arg("token") token: string,
+        @Arg("newPassword") newPassword: string
+    ): Promise<UserResponse> {
+        if(newPassword.length <= 3){
+            return {
+                errors: [{
+                    field: "newPassword",
+                    message: "New password is too short"
+                }]
+            }
+        }
+        const key = FORGET_PASS_PREFIX+token;
+        const userId = await ctx.redis.get(key);
+
+        if(!userId){
+            return {
+                errors: [{
+                    field: "token",
+                    message: "Token is expired"
+                }]
+            }
+        }
+        const  user = await ctx.em.findOne(User, {id: parseInt(userId)})
+        if(!user) {
+            return {
+                errors: [{
+                    field: "token",
+                    message: "User no longer exists"
+                }]
+            }
+        }
+        //saving user and changin its password
+        user.password = await argon.hash(newPassword);
+        await ctx.em.persistAndFlush(user);
+        
+        ctx.redis.del(key);
+
+        ctx.req.session.userId = user.id;
+        return { user }
+    }
+
     @Query(()=>User, {nullable: true})
     async me( @Ctx() ctx: MyContext ) {
         const userId = ctx.req.session.userId;
@@ -50,11 +94,11 @@ export class UserResolver {
         return user
     }
 
-    @Mutation(()=> UserRespone)
+    @Mutation(()=> UserResponse)
     async registerUser(
         @Arg("options", ()=>UsernameAndPassInput) options: UsernameAndPassInput,
         @Ctx() ctx: MyContext
-    ): Promise<UserRespone> {
+    ): Promise<UserResponse> {
        try {
         const userByUsername = await ctx.em.findOne(User, {username: options.username});
         const userByEmail = await ctx.em.findOne(User, {email: options.email});
@@ -90,12 +134,12 @@ export class UserResolver {
         }
     }
 
-    @Mutation(()=> UserRespone)
+    @Mutation(()=> UserResponse)
     async login(
         @Arg("usernameOrEmail") usernameOrEmail: string,
         @Arg("password") password: string,
         @Ctx() ctx: MyContext
-    ): Promise<UserRespone>{
+    ): Promise<UserResponse>{
         const userFind = await ctx.em.findOne(User, usernameOrEmail.includes("@") ? {email: usernameOrEmail} : {username: usernameOrEmail} );
 
         if(!userFind){
@@ -145,6 +189,9 @@ export class UserResolver {
     ): Promise<Boolean> {
         const user = await ctx.em.findOne(User, {email})
 
+        console.log(user)
+        console.log(email);
+        
         if(!user){
             return true
         }
@@ -154,7 +201,7 @@ export class UserResolver {
         await ctx.redis.set(FORGET_PASS_PREFIX + token, user.id, "ex", 1000*60*5); // 5 minutes to restore pass
 
         const html =  createHtmlForEmail.htmlForgotPassword(token);
-
+        
         await nodemailerService({receiver: email, html }); 
         return true
     }

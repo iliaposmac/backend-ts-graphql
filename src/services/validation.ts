@@ -1,7 +1,7 @@
 import { User } from "src/etities/User"
 import { UsernameAndPassInput } from "src/resolvers/UsernameAndPassInput"
 
-export const validateRegister = (options: UsernameAndPassInput, userbyEmail: User | null, userbyUsername: User | null): any => {
+export const validateRegister = (options: UsernameAndPassInput, userbyEmail: User | undefined, userbyUsername: User | undefined): any => {
     if(userbyUsername){
         return [{
             field:"username",

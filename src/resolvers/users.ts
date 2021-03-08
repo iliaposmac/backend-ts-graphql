@@ -2,13 +2,13 @@ import { User } from "../etities/User";
 import { MyContext } from "src/types";
 import argon from "argon2";
 import { Arg, Ctx, Field, Mutation, ObjectType, Query, Resolver } from "type-graphql";
-import { EntityManager } from "@mikro-orm/postgresql";
 import { COOKIE_NAME, FORGET_PASS_PREFIX } from "../constants";
 import { UsernameAndPassInput } from "./UsernameAndPassInput";
 import { validateRegister } from "../services/validation";
 import { nodemailerService } from "../services/nodemailer";
 import createHtmlForEmail from "../services/createHtmlForEmail";
 import { v4 } from 'uuid';
+import { getConnection } from "typeorm";
 
 
 
@@ -30,12 +30,12 @@ class UserResponse {
     user?: User
 }
 
-interface newUser  {
-    username: string,
-    password: string,
-    created_at: Date,
-    email: string
-}
+// interface newUser  {
+//     username: string,
+//     password: string,
+//     created_at: Date,
+//     email: string
+// }
 
 @Resolver()
 export class UserResolver {
@@ -56,7 +56,7 @@ export class UserResolver {
         }
         const key = FORGET_PASS_PREFIX+token;
         const userId = await ctx.redis.get(key);
-
+        
         if(!userId){
             return {
                 errors: [{
@@ -65,7 +65,9 @@ export class UserResolver {
                 }]
             }
         }
-        const  user = await ctx.em.findOne(User, {id: parseInt(userId)})
+        const userIdNum = parseInt(userId);
+        const  user = await User.findOne(userIdNum);
+
         if(!user) {
             return {
                 errors: [{
@@ -75,33 +77,34 @@ export class UserResolver {
             }
         }
         //saving user and changin its password
-        user.password = await argon.hash(newPassword);
-        await ctx.em.persistAndFlush(user);
-        
-        ctx.redis.del(key);
+        // user.password = await argon.hash(newPassword);
+        // await ctx.em.persistAndFlush(user);
+
+        User.update({id: userIdNum}, {
+            password: await argon.hash(newPassword)
+        })
+    
+        await ctx.redis.del(key);
 
         ctx.req.session.userId = user.id;
         return { user }
     }
 
     @Query(()=>User, {nullable: true})
-    async me( @Ctx() ctx: MyContext ) {
-        const userId = ctx.req.session.userId;
-        const user = await ctx.em.findOne(User, {id: userId}); 
-        if(!user){
+    me( @Ctx() ctx: MyContext ) {
+        if(!ctx.req.session.userId){
             return null;
         }
-        return user
+        return User.findOne(ctx.req.session.userId);
     }
 
     @Mutation(()=> UserResponse)
     async registerUser(
-        @Arg("options", ()=>UsernameAndPassInput) options: UsernameAndPassInput,
-        @Ctx() ctx: MyContext
+        @Arg("options", ()=>UsernameAndPassInput) options: UsernameAndPassInput
     ): Promise<UserResponse> {
        try {
-        const userByUsername = await ctx.em.findOne(User, {username: options.username});
-        const userByEmail = await ctx.em.findOne(User, {email: options.email});
+        const userByUsername = await User.findOne({where: {username: options.username}});
+        const userByEmail = await User.findOne({where: {email: options.email}});
 
         const errors = validateRegister(options, userByEmail, userByUsername);
 
@@ -111,18 +114,14 @@ export class UserResolver {
         }
 
         const hashedPassword = await argon.hash(options.password)
-        const userObj: newUser = {
-            created_at: new Date(),
+
+        const result = await getConnection().createQueryBuilder().insert().into(User).values({
             email: options.email,
             password: hashedPassword,
-            username: options.username
-        }
-
-        console.log('registered %s', userObj);
-
-        const newUser = await (ctx.em as EntityManager).createQueryBuilder(User).getKnexQuery().insert(userObj).returning("*");
+            username: options.username  
+        }).returning("*").execute();
         
-        return { user: newUser[0] }
+        return { user: result.raw }
 
         } catch (error) {
             return {
@@ -140,7 +139,7 @@ export class UserResolver {
         @Arg("password") password: string,
         @Ctx() ctx: MyContext
     ): Promise<UserResponse>{
-        const userFind = await ctx.em.findOne(User, usernameOrEmail.includes("@") ? {email: usernameOrEmail} : {username: usernameOrEmail} );
+        const userFind = await User.findOne( {where:usernameOrEmail.includes("@") ? {email: usernameOrEmail} : {username: usernameOrEmail}} );
 
         if(!userFind){
             return {
@@ -187,10 +186,7 @@ export class UserResolver {
         @Arg("email") email: string,
         @Ctx() ctx: MyContext
     ): Promise<Boolean> {
-        const user = await ctx.em.findOne(User, {email})
-
-        console.log(user)
-        console.log(email);
+        const user = await User.findOne({where: {email}});
         
         if(!user){
             return true

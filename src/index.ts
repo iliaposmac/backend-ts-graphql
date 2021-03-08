@@ -1,13 +1,14 @@
 import 'reflect-metadata';
-import { Connection, IDatabaseDriver, Logger, MikroORM } from '@mikro-orm/core';
+import {  Logger } from '@mikro-orm/core';
 import { COOKIE_NAME, FRONT_URL, __prod__ } from './constants';
-import mikroORMinit from './mikro-orm.config';
+import { typeORMconfig } from './mikro-orm.config';
 import express from 'express';
 import { ApolloServer } from 'apollo-server-express';
 import { buildSchema } from 'type-graphql';
 import { PostResolver } from './resolvers/Post';
 import { UserResolver } from './resolvers/users';
 import Redis from 'ioredis';
+import { createConnection } from 'typeorm';
 import connectRedis from 'connect-redis';
 import session from 'express-session';
 import { SessionOptions } from 'express-session';
@@ -17,9 +18,9 @@ const main  = async(): Promise<void> => {
     const logger = new Logger((message) => console.log(message), true);
     logger.log("discovery" ,"Defining mikro orm")
 
-
-    const orm: MikroORM<IDatabaseDriver<Connection>> = await MikroORM.init(mikroORMinit);
-    await orm.getMigrator().up()
+    const connection = await createConnection(typeORMconfig);
+    
+   
 
     const RedisStore = connectRedis(session);
     const redis = new Redis();
@@ -54,7 +55,7 @@ const main  = async(): Promise<void> => {
             resolvers: [PostResolver, UserResolver], 
             validate: false
         }),
-        context: ({req, res}) => ({em: orm.em, req, res, redis})
+        context: ({req, res}) => ({ req, res, redis })
     })
 
     apolloServer.applyMiddleware({ 

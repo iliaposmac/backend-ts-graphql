@@ -16,7 +16,6 @@ export async function nodemailerService(options: EmailInterface) {
         pass: "GUK811cH5PZs1B4jFc", // generated ethereal password
       }
   });
-  console.log(options.receiver);
   // send mail with defined transport object
   let info = await transporter.sendMail({
     from: '"Fred Foo 👻" <foo@example.com>', // sender address

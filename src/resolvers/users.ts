@@ -40,6 +40,11 @@ class UserResponse {
 @Resolver()
 export class UserResolver {
 
+    @Query(()=>[User])
+    async getAllUsers(): Promise<User[]>{
+        return (await User.find())
+    }
+
     @Mutation(()=> UserResponse)
     async changePassword(
         @Ctx() ctx: MyContext,
@@ -121,7 +126,7 @@ export class UserResolver {
             username: options.username  
         }).returning("*").execute();
         
-        return { user: result.raw }
+        return { user: result.raw[0] }
 
         } catch (error) {
             return {

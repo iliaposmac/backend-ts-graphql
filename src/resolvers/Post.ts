@@ -1,6 +1,8 @@
 import { Post } from "../etities/Post";
-import { Arg,  Int, Mutation, Query, Resolver } from "type-graphql";
-
+import { Arg,  Ctx,  Int, Mutation, Query, Resolver, UseMiddleware } from "type-graphql";
+import { TitleAndText } from "./TitleAndText";
+import { MyContext } from "src/types";
+import { isAuth } from "../middleware/isAuth";
 
 @Resolver()
 export class PostResolver {
@@ -16,10 +18,15 @@ export class PostResolver {
     }
 
     @Mutation(()=>Post)
+    @UseMiddleware(isAuth)
     async createPost(
-        @Arg('title', ()=> String) title: string
+        @Arg('options') options: TitleAndText,
+        @Ctx() ctx: MyContext
     ): Promise<Post>  {
-        const post = Post.create({title}).save();
+        const post = Post.create({
+            ...options,
+            creatorId: ctx.req.session.userId
+        }).save();
         return post
     }
 

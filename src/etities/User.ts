@@ -1,9 +1,11 @@
+import { OneToMany } from "typeorm";
 import { Field, Int, ObjectType } from "type-graphql";
 import { BaseEntity, Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Post } from "./Post";
 
 @ObjectType()
 @Entity()
-export class User extends BaseEntity{
+export class User extends BaseEntity {
    @Field(()=>Int)
    @PrimaryGeneratedColumn()
    id!: number
@@ -23,4 +25,7 @@ export class User extends BaseEntity{
    @Field(()=>String)
    @Column()
    password: string
+
+   @OneToMany(()=>Post, post=> post.creator)
+   posts: Post[]
 }
